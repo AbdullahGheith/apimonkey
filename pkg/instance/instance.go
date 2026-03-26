@@ -91,6 +91,11 @@ func (i *DefaultInstance) StartAsync(immediate bool) {
 }
 
 func (i *DefaultInstance) run(immediate bool) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Error().Msgf("panic in run: %v", rec)
+		}
+	}()
 	ctx := i.ctx
 
 	if immediate {
@@ -106,7 +111,7 @@ func (i *DefaultInstance) run(immediate bool) {
 		innerCancel()
 	}
 
-	if i.cfg.IntervalSeconds <= 0 {
+	if i.cfg == nil || i.cfg.IntervalSeconds <= 0 {
 		return
 	}
 
@@ -135,6 +140,12 @@ func (i *DefaultInstance) run(immediate bool) {
 func (i *DefaultInstance) ExecuteSingleRequest(
 	ctx context.Context,
 ) {
+	if i.cfg == nil {
+		zerolog.Ctx(ctx).Error().Msg("config is nil, cannot execute request")
+		i.ShowAlert()
+		return
+	}
+
 	resp, err := i.executor.Execute(ctx, executor.ExecuteRequest{
 		Config: *i.cfg,
 	})
@@ -239,9 +250,31 @@ func (i *DefaultInstance) stopWithoutLock() {
 }
 
 func (i *DefaultInstance) KeyPressed() error {
+	i.mut.Lock()
+	defer i.mut.Unlock()
+
+	if i.cfg == nil {
+		i.ShowAlert()
+		return errors.New("instance config is nil")
+	}
+
 	targetUrl := i.cfg.BrowserUrl
 	if targetUrl == "" {
-		i.ExecuteSingleRequest(i.ctx)
+		ctx := i.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+
+		newLogger := log.With().
+			Str("id", uuid.NewString()).
+			Str("ctxID", i.ctxID).
+			Logger()
+
+		innerCtx, innerCancel := context.WithCancel(ctx)
+		defer innerCancel()
+		innerCtx = newLogger.WithContext(innerCtx)
+
+		i.ExecuteSingleRequest(innerCtx)
 		return nil
 	}
 
