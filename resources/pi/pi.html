@@ -65,9 +65,10 @@
                 <input id="showSuccessNotification" class="sdProperty sdCheckbox" type="checkbox" v-model="config.showSuccessNotification">
                 <label for="showSuccessNotification" class="sdpi-item-label"><span></span>Show Success</label>
             </div>
-        </div>
-        <div class="sdpi-item-value">
-            <input class="sdProperty sdCheckbox" type="checkbox" v-model="config.showSuccessNotification">
+            <div class="sdpi-item-value">
+                <input id="insecureSkipVerify" class="sdProperty sdCheckbox" type="checkbox" v-model="config.insecureSkipVerify">
+                <label for="insecureSkipVerify" class="sdpi-item-label"><span></span>Ignore invalid certs</label>
+            </div>
         </div>
     </div>
     <hr>

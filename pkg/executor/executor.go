@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"crypto/tls"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -28,7 +29,11 @@ func (e *Executor) Execute(
 	ctx context.Context,
 	executeReq ExecuteRequest,
 ) (*ExecuteResponse, error) {
-	httpReq := req.C().NewRequest()
+	client := req.C()
+	if executeReq.Config.InsecureSkipVerify {
+		client.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
+	}
+	httpReq := client.NewRequest()
 	httpReq = httpReq.SetContext(ctx)
 	httpReq.Method = executeReq.Config.MethodType
 
