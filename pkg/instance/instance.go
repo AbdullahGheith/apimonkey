@@ -28,6 +28,7 @@ type DefaultInstance struct {
 	ctxCancel context.CancelFunc
 	executor  Executor
 	sdk       SDK
+	lastReq   time.Time
 }
 
 func NewInstance(
@@ -91,13 +92,19 @@ func (i *DefaultInstance) StartAsync() {
 }
 
 func (i *DefaultInstance) run() {
-	ctx := i.ctx
+	for {
+		i.mut.Lock()
+		ctx := i.ctx
+		if ctx == nil || ctx.Err() != nil {
+			i.mut.Unlock()
+			return
+		}
 
-	for ctx.Err() == nil {
 		interval := 30
-		if i.cfg.IntervalSeconds > 0 {
+		if i.cfg != nil && i.cfg.IntervalSeconds > 0 {
 			interval = i.cfg.IntervalSeconds
 		}
+		i.mut.Unlock()
 
 		newLogger := log.With().
 			Str("id", uuid.NewString()).
@@ -110,15 +117,38 @@ func (i *DefaultInstance) run() {
 		i.ExecuteSingleRequest(innerCtx)
 		innerCancel()
 
-		time.Sleep(time.Duration(interval) * time.Second)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(interval) * time.Second):
+		}
 	}
 }
 
 func (i *DefaultInstance) ExecuteSingleRequest(
 	ctx context.Context,
 ) {
+	if ctx == nil {
+		return
+	}
+
+	i.mut.Lock()
+	if i.cfg == nil {
+		i.mut.Unlock()
+		return
+	}
+
+	if time.Since(i.lastReq) < 1*time.Second {
+		i.mut.Unlock()
+		return
+	}
+
+	i.lastReq = time.Now()
+	cfg := *i.cfg
+	i.mut.Unlock()
+
 	resp, err := i.executor.Execute(ctx, executor.ExecuteRequest{
-		Config: *i.cfg,
+		Config: cfg,
 	})
 	if err != nil {
 		zerolog.Ctx(ctx).Err(err).Msg("error executing request")
@@ -126,23 +156,24 @@ func (i *DefaultInstance) ExecuteSingleRequest(
 		return
 	}
 
-	if handleErr := i.HandleResponse(ctx, resp); handleErr != nil {
+	if handleErr := i.HandleResponse(ctx, cfg, resp); handleErr != nil {
 		zerolog.Ctx(ctx).Err(handleErr).Msg("error handling response")
 		i.ShowAlert()
 		return
 	}
 
-	if i.cfg.ShowSuccessNotification {
+	if cfg.ShowSuccessNotification {
 		i.ShowOk()
 	}
 }
 
 func (i *DefaultInstance) HandleResponse(
 	ctx context.Context,
+	cfg common.Config,
 	response *executor.ExecuteResponse,
 ) error {
 	var sb strings.Builder
-	prefix, err := utils.ExecuteTemplate(i.cfg.TitlePrefix, i.cfg.TemplateParameters)
+	prefix, err := utils.ExecuteTemplate(cfg.TitlePrefix, cfg.TemplateParameters)
 	if err != nil {
 		return errors.Wrap(err, "failed to execute template on prefix")
 	}
@@ -151,7 +182,7 @@ func (i *DefaultInstance) HandleResponse(
 		sb.WriteString(strings.ReplaceAll(prefix, "\\n", "\n") + "\n")
 	}
 
-	if len(i.cfg.ResponseMapper) == 0 {
+	if len(cfg.ResponseMapper) == 0 {
 		sb.WriteString(response.Response)
 
 		i.sdk.SetTitle(i.ctxID, sb.String(), 0)
@@ -160,8 +191,8 @@ func (i *DefaultInstance) HandleResponse(
 		return nil
 	}
 
-	def, defaultOk := i.cfg.ResponseMapper["*"]
-	mapped, ok := i.cfg.ResponseMapper[response.Response]
+	def, defaultOk := cfg.ResponseMapper["*"]
+	mapped, ok := cfg.ResponseMapper[response.Response]
 
 	if !ok && defaultOk {
 		mapped = def
@@ -221,21 +252,37 @@ func (i *DefaultInstance) stopWithoutLock() {
 }
 
 func (i *DefaultInstance) KeyPressed() error {
-	targetUrl := i.cfg.BrowserUrl
+	i.mut.Lock()
+	if i.cfg == nil {
+		i.mut.Unlock()
+		return nil
+	}
+	cfg := *i.cfg
+	ctx := i.ctx
+	i.mut.Unlock()
+
+	targetUrl := cfg.BrowserUrl
 	if targetUrl == "" {
-		i.ExecuteSingleRequest(i.ctx)
+		i.ExecuteSingleRequest(ctx)
 		return nil
 	}
 
-	targetUrl, err := utils.ExecuteTemplate(targetUrl, i.cfg.TemplateParameters)
+	templatedBrowserUrl, err := utils.ExecuteTemplate(targetUrl, cfg.TemplateParameters)
 	if err != nil {
 		i.ShowAlert()
 		return errors.Wrap(err, "failed to execute template")
 	}
 
-	if err = utils.OpenBrowser(targetUrl); err != nil {
+	if err = utils.OpenBrowser(templatedBrowserUrl); err != nil {
 		i.ShowAlert()
 		return err
+	}
+
+	templatedApiUrl, err := utils.ExecuteTemplate(cfg.ApiUrl, cfg.TemplateParameters)
+	if err == nil && templatedApiUrl != templatedBrowserUrl {
+		i.ExecuteSingleRequest(ctx)
+	} else if err != nil {
+		// fallback to execute if template fails? probably not, but at least we don't block.
 	}
 
 	return nil
