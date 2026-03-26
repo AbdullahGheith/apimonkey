@@ -36,7 +36,7 @@ func (m *Manager) InitInstance(ctxId string) (Instance, error) {
 	return instance, nil
 }
 
-func (m *Manager) StartAsync(ctxId string) error {
+func (m *Manager) StartAsync(ctxId string, immediate bool) error {
 	m.mut.Lock()
 	defer m.mut.Unlock()
 	instance, ok := m.instances[ctxId]
@@ -45,7 +45,7 @@ func (m *Manager) StartAsync(ctxId string) error {
 		return errors.New("instance not found")
 	}
 
-	instance.StartAsync()
+	instance.StartAsync(immediate)
 
 	return nil
 }

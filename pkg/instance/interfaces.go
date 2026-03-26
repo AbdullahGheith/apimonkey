@@ -30,7 +30,7 @@ type Factory interface {
 
 type Instance interface {
 	SetConfig(payload *fastjson.Value) error
-	StartAsync()
+	StartAsync(immediate bool)
 	Stop()
 	KeyPressed() error
 }

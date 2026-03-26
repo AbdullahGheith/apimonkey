@@ -20,14 +20,14 @@ func TestNewManager(t *testing.T) {
 	mockInstance := NewMockInstance(gomock.NewController(t))
 	factory.EXPECT().Create(ctxID).Return(mockInstance)
 
-	mockInstance.EXPECT().StartAsync()
+	mockInstance.EXPECT().StartAsync(gomock.Any())
 	mockInstance.EXPECT().Stop()
 	mockInstance.EXPECT().KeyPressed()
 
 	_, err := mgr.InitInstance(ctxID)
 	assert.Nil(t, err)
 
-	assert.NoError(t, mgr.StartAsync(ctxID))
+	assert.NoError(t, mgr.StartAsync(ctxID, true))
 	assert.NoError(t, mgr.KeyPressed(ctxID))
 
 	js := &fastjson.Value{}
@@ -43,7 +43,7 @@ func TestNotExist(t *testing.T) {
 
 	ctxID := "1231231"
 
-	assert.ErrorContains(t, mgr.StartAsync(ctxID), "instance not found")
+	assert.ErrorContains(t, mgr.StartAsync(ctxID, true), "instance not found")
 	assert.ErrorContains(t, mgr.KeyPressed(ctxID), "instance not found")
 	assert.ErrorContains(t, mgr.SetInstanceConfig(ctxID, nil), "instance not found")
 	assert.NoError(t, mgr.Stop(ctxID))

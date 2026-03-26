@@ -77,7 +77,7 @@ func (i *DefaultInstance) ShowOk() {
 	i.sdk.ShowOk(i.ctxID)
 }
 
-func (i *DefaultInstance) StartAsync() {
+func (i *DefaultInstance) StartAsync(immediate bool) {
 	i.mut.Lock()
 	defer i.mut.Unlock()
 
@@ -87,18 +87,13 @@ func (i *DefaultInstance) StartAsync() {
 	i.ctx = ctx
 	i.ctxCancel = cancel
 
-	go i.run()
+	go i.run(immediate)
 }
 
-func (i *DefaultInstance) run() {
+func (i *DefaultInstance) run(immediate bool) {
 	ctx := i.ctx
 
-	for ctx.Err() == nil {
-		interval := 30
-		if i.cfg.IntervalSeconds > 0 {
-			interval = i.cfg.IntervalSeconds
-		}
-
+	if immediate {
 		newLogger := log.With().
 			Str("id", uuid.NewString()).
 			Str("ctxID", i.ctxID).
@@ -109,8 +104,31 @@ func (i *DefaultInstance) run() {
 
 		i.ExecuteSingleRequest(innerCtx)
 		innerCancel()
+	}
 
-		time.Sleep(time.Duration(interval) * time.Second)
+	if i.cfg.IntervalSeconds <= 0 {
+		return
+	}
+
+	ticker := time.NewTicker(time.Duration(i.cfg.IntervalSeconds) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			newLogger := log.With().
+				Str("id", uuid.NewString()).
+				Str("ctxID", i.ctxID).
+				Logger()
+
+			innerCtx, innerCancel := context.WithCancel(ctx)
+			innerCtx = newLogger.WithContext(innerCtx)
+
+			i.ExecuteSingleRequest(innerCtx)
+			innerCancel()
+		}
 	}
 }
 

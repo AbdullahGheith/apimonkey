@@ -68,7 +68,7 @@ func main() {
 			return
 		}
 
-		if err = manager.StartAsync(event.Context); err != nil {
+		if err = manager.StartAsync(event.Context, true); err != nil {
 			lg.Err(err).Send()
 			return
 		}
@@ -85,6 +85,10 @@ func main() {
 
 	sdk.AddHandler(func(event *sdk.ReceiveSettingsEvent) {
 		if err := manager.SetInstanceConfig(event.Context, event.Settings); err != nil {
+			lg.Err(err).Send()
+			return
+		}
+		if err := manager.StartAsync(event.Context, false); err != nil {
 			lg.Err(err).Send()
 			return
 		}
