@@ -88,6 +88,11 @@ func main() {
 			lg.Err(err).Send()
 			return
 		}
+
+		if err := manager.StartAsync(event.Context); err != nil {
+			lg.Err(err).Send()
+			return
+		}
 	})
 
 	sdk.AddHandler(func(event *sdk.KeyDownEvent) {
