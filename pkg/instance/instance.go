@@ -223,7 +223,8 @@ func (i *DefaultInstance) stopWithoutLock() {
 func (i *DefaultInstance) KeyPressed() error {
 	targetUrl := i.cfg.BrowserUrl
 	if targetUrl == "" {
-		targetUrl = i.cfg.ApiUrl
+		i.ExecuteSingleRequest(i.ctx)
+		return nil
 	}
 
 	targetUrl, err := utils.ExecuteTemplate(targetUrl, i.cfg.TemplateParameters)
